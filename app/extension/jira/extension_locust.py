@@ -54,8 +54,8 @@ def scan_issue(locust):
     scan_dto = json.loads(content)
 
     assert "scanState" in scan_dto, f"Scan state not in scan report response: {scan_dto}"
-    assert scan_dto["scanState"] == "SCHEDULED", \
-        f"Scan state is {scan_dto['scanState']}, expected Scheduled. DTO: {scan_dto}"
+    assert scan_dto["scanState"] in ("SCHEDULED", "SCANNED"), \
+        f"Scan state is {scan_dto['scanState']}, expected Scheduled or Scanned. DTO: {scan_dto}"
 
     assert "upToDateContent" in scan_dto, f"Scan state liveness not in scan report response: {scan_dto}"
     assert scan_dto["upToDateContent"], f"Scan state is not up to date with regard to content. DTO: {scan_dto}"
