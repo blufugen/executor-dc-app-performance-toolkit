@@ -3,7 +3,7 @@ from locustio.jira.http_actions import login_and_view_dashboard, create_issue, s
     view_project_summary, view_dashboard, edit_issue, add_comment, browse_boards, view_kanban_board, view_scrum_board, \
     view_backlog, browse_projects
 from locustio.common_utils import LocustConfig, MyBaseTaskSet
-from extension.jira.extension_locust import app_specific_action
+from extension.jira.extension_locust import get_issue_scan, scan_issue
 from util.conf import JIRA_SETTINGS
 
 config = LocustConfig(config_yml=JIRA_SETTINGS)
@@ -63,9 +63,17 @@ class JiraBehavior(MyBaseTaskSet):
     def browse_boards_action(self):
         browse_boards(self)
 
-    @task(config.percentage('standalone_extension'))  # By default disabled
-    def custom_action(self):
-        app_specific_action(self)
+    ################################################################################
+    # Soteri Security for Jira Custom Tasks
+    ################################################################################
+
+    @task(config.percentage('get_issue_scan'))
+    def get_issue_scan_action(self):
+        get_issue_scan(self)
+
+    @task(config.percentage('scan_issue'))
+    def scan_issue_action(self):
+        scan_issue(self)
 
 
 class JiraUser(HttpUser):

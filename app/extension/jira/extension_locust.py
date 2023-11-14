@@ -1,29 +1,64 @@
-import re
-from locustio.common_utils import init_logger, jira_measure, run_as_specific_user  # noqa F401
+import json
+import random
+
+from locustio.common_utils import init_logger, jira_measure, run_as_specific_user
+from locustio.jira.requests_params import jira_datasets
+
+jira_dataset = jira_datasets()
+
+HEADERS = {
+    # Required to get POSTs to work.
+    "X-Atlassian-Token": "no-check",
+}
+ADMIN_USER="admin"
+ADMIN_PASSWORD="admin"
+
 
 logger = init_logger(app_type='jira')
 
 
-@jira_measure("locust_app_specific_action")
-# @run_as_specific_user(username='admin', password='admin')  # run as specific user
-def app_specific_action(locust):
-    r = locust.get('/app/get_endpoint', catch_response=True)  # call app-specific GET endpoint
-    content = r.content.decode('utf-8')   # decode response content
+@jira_measure("security_for_jira_locust_app_specific_action_load_scan")
+@run_as_specific_user(username=ADMIN_USER, password=ADMIN_PASSWORD)
+def get_issue_scan(locust):
+    """Get the scan result for a single issue."""
+    issue_key = random.choice(jira_dataset['issues'])[0]
+    reviewed = False
 
-    token_pattern_example = '"token":"(.+?)"'
-    id_pattern_example = '"id":"(.+?)"'
-    token = re.findall(token_pattern_example, content)  # get TOKEN from response using regexp
-    id = re.findall(id_pattern_example, content)    # get ID from response using regexp
+    response = locust.get(
+        url=f'/rest/security/latest/scan/issue/{issue_key}'
+            f'?reviewed={reviewed}',
+        catch_response=True,
+        headers=HEADERS)
 
-    logger.locust_info(f'token: {token}, id: {id}')  # log info for debug when verbose is true in jira.yml file
-    if 'assertion string' not in content:
-        logger.error(f"'assertion string' was not found in {content}")
-    assert 'assertion string' in content  # assert specific string in response content
+    content = response.content.decode('utf-8')
+    scan_dto = json.loads(content)
 
-    body = {"id": id, "token": token}  # include parsed variables to POST request body
-    headers = {'content-type': 'application/json'}
-    r = locust.post('/app/post_endpoint', body, headers, catch_response=True)  # call app-specific POST endpoint
-    content = r.content.decode('utf-8')
-    if 'assertion string after successful POST request' not in content:
-        logger.error(f"'assertion string after successful POST request' was not found in {content}")
-    assert 'assertion string after successful POST request' in content  # assertion after POST request
+    assert "scanState" in scan_dto, f"Scan state not in scan report response: {scan_dto}"
+    assert "upToDateContent" in scan_dto, f"Scan state up-to-date content not in scan report response: {scan_dto}"
+    assert "upToDateSettings" in scan_dto, f"Scan state up-to-date settings not in scan report response: {scan_dto}"
+
+
+@jira_measure("security_for_jira_locust_app_specific_action_scan_issue")
+@run_as_specific_user(username=ADMIN_USER, password=ADMIN_PASSWORD)
+def scan_issue(locust):
+    """Schedule a scan """
+    issue_key = random.choice(jira_dataset['issues'])[0]
+
+    response = locust.post(
+        url='/rest/security/latest/scan/issue'
+            f'?key={issue_key}',
+        catch_response=True,
+        headers=HEADERS)
+
+    content = response.content.decode('utf-8')
+    scan_dto = json.loads(content)
+
+    assert "scanState" in scan_dto, f"Scan state not in scan report response: {scan_dto}"
+    assert scan_dto["scanState"] == "SCHEDULED", \
+        f"Scan state is {scan_dto['scanState']}, expected Scheduled. DTO: {scan_dto}"
+
+    assert "upToDateContent" in scan_dto, f"Scan state liveness not in scan report response: {scan_dto}"
+    assert scan_dto["upToDateContent"], f"Scan state is not up to date with regard to content. DTO: {scan_dto}"
+
+    assert "upToDateSettings" in scan_dto, f"Scan state up-to-date settings not in scan report response: {scan_dto}"
+    assert scan_dto["upToDateSettings"], f"Scan state is not up to date with regard to settings. DTO: {scan_dto}"
